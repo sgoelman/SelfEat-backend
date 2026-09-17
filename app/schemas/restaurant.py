@@ -1,6 +1,6 @@
 import uuid
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class RestaurantPublic(BaseModel):
@@ -18,4 +18,4 @@ class RestaurantCreate(BaseModel):
     name: str
     languages: list[str] = ["en"]
     owner_email: str
-    owner_password: str
+    owner_password: str = Field(min_length=8)

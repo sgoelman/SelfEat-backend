@@ -68,6 +68,18 @@ async def test_create_and_list_staff(client, restaurant):
     assert {"owner@test.selfeat", "chef@test.selfeat"} == emails
 
 
+async def test_create_staff_rejects_short_password(client, restaurant):
+    slug = restaurant["slug"]
+    headers = restaurant["owner_headers"]
+
+    resp = await client.post(
+        f"/restaurants/{slug}/staff",
+        json={"email": "shortpass@test.selfeat", "password": "abc123", "role": "waiter", "name": "Short Pass"},
+        headers=headers,
+    )
+    assert resp.status_code == 422
+
+
 async def test_update_signup_gift(client, restaurant):
     slug = restaurant["slug"]
     headers = restaurant["owner_headers"]

@@ -1,6 +1,6 @@
 import uuid
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.user import UserRole
 
@@ -17,7 +17,7 @@ class RolePermissionsUpdate(BaseModel):
 
 class StaffCreate(BaseModel):
     email: str
-    password: str
+    password: str = Field(min_length=8)
     role: UserRole
     name: str | None = None
 

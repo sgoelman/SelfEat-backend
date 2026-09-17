@@ -11,6 +11,11 @@ class MenuSectionCreate(BaseModel):
     sort_order: int = 0
 
 
+class MenuSectionUpdate(BaseModel):
+    name: dict[str, str] | None = None
+    sort_order: int | None = None
+
+
 class MenuSectionOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -27,6 +32,7 @@ class MenuItemCreate(BaseModel):
     price: float
     picture_url: str | None = None
     is_vegan: bool = False
+    diet_tags: list[str] = []
     allergens: list[str] = []
     available_from: time | None = None
     available_to: time | None = None
@@ -42,6 +48,7 @@ class MenuItemUpdate(BaseModel):
     price: float | None = None
     picture_url: str | None = None
     is_vegan: bool | None = None
+    diet_tags: list[str] | None = None
     allergens: list[str] | None = None
     available_from: time | None = None
     available_to: time | None = None
@@ -61,6 +68,7 @@ class MenuItemOut(BaseModel):
     price: float
     picture_url: str | None
     is_vegan: bool
+    diet_tags: list[str]
     allergens: list[str]
     available_from: time | None
     available_to: time | None

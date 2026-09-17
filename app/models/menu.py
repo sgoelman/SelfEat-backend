@@ -33,6 +33,7 @@ class MenuItem(Base):
     price: Mapped[float] = mapped_column(Float)
     picture_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     is_vegan: Mapped[bool] = mapped_column(Boolean, default=False)
+    diet_tags: Mapped[list[str]] = mapped_column(JSON, default=list)  # e.g. "kosher", "halal", "vegetarian", "gluten_free"
     allergens: Mapped[list[str]] = mapped_column(JSON, default=list)
     available_from: Mapped[time | None] = mapped_column(Time, nullable=True)
     available_to: Mapped[time | None] = mapped_column(Time, nullable=True)

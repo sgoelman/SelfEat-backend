@@ -41,6 +41,7 @@ class OrderOut(BaseModel):
     id: uuid.UUID
     restaurant_id: uuid.UUID
     table_id: uuid.UUID | None
+    pickup_number: int | None
     status: OrderStatus
     fulfillment_mode: FulfillmentMode
     payment_method: PaymentMethod | None
@@ -52,3 +53,11 @@ class OrderOut(BaseModel):
 
 class ClaimRequest(BaseModel):
     staff_name: str
+
+
+class KitchenQueueItemOut(OrderItemOut):
+    """Kitchen/bar queue view — adds order context so staff know who to call or where to deliver."""
+
+    order_id: uuid.UUID
+    pickup_number: int | None
+    table_number: int | None

@@ -48,6 +48,9 @@ class Order(Base):
     payment_status: Mapped[PaymentStatus] = mapped_column(Enum(PaymentStatus), default=PaymentStatus.pending)
     tip_amount: Mapped[float] = mapped_column(Float, default=0)
     total_amount: Mapped[float] = mapped_column(Float, default=0)
+    # Per-restaurant sequential number for table-less (kiosk/counter) orders — lets staff call
+    # "Order #12" instead of a table number. Set at creation; see create_order in routes/orders.py.
+    pickup_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
 
 
@@ -71,3 +74,4 @@ class OrderItem(Base):
     assigned_staff_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     serve_after_food: Mapped[bool] = mapped_column(Boolean, default=False)
     serve_delay_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), index=True)

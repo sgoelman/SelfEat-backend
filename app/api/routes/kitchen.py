@@ -9,8 +9,9 @@ from app.core.database import AsyncSessionLocal, get_db
 from app.models.menu import MenuItem, QueueType
 from app.models.order import Order, OrderItem, OrderItemStatus
 from app.models.restaurant import Restaurant
+from app.models.table import RestaurantTable
 from app.models.user import User
-from app.schemas.order import ClaimRequest, OrderItemOut
+from app.schemas.order import ClaimRequest, KitchenQueueItemOut, OrderItemOut
 from app.services.queue_manager import queue_manager
 
 router = APIRouter(tags=["kitchen"])
@@ -29,28 +30,42 @@ async def _load_item_with_context(item_id: uuid.UUID, db: AsyncSession) -> tuple
     return row[0], row[1], row[2]
 
 
-@router.get("/restaurants/{slug}/kitchen/{queue_type}", response_model=list[OrderItemOut])
+@router.get("/restaurants/{slug}/kitchen/{queue_type}", response_model=list[KitchenQueueItemOut])
 async def list_queue(
     slug: str,
     queue_type: QueueType,
     db: AsyncSession = Depends(get_db),
     staff: User = Depends(get_current_staff),
-) -> list[OrderItem]:
+) -> list[KitchenQueueItemOut]:
     restaurant = await get_restaurant_or_404(slug, db)
     ensure_staff_belongs(restaurant, staff)
     require_capability(restaurant, staff, "view_kitchen_queue")
 
     result = await db.execute(
-        select(OrderItem)
+        select(OrderItem, Order, RestaurantTable)
         .join(Order, OrderItem.order_id == Order.id)
         .join(MenuItem, OrderItem.menu_item_id == MenuItem.id)
+        .outerjoin(RestaurantTable, Order.table_id == RestaurantTable.id)
         .where(
             Order.restaurant_id == restaurant.id,
             MenuItem.queue_type == queue_type,
             OrderItem.status.in_([OrderItemStatus.queued, OrderItemStatus.in_progress]),
         )
+        # True FIFO — first order placed is first shown, regardless of item/table.
+        .order_by(OrderItem.created_at)
     )
-    return list(result.scalars().all())
+    out: list[KitchenQueueItemOut] = []
+    for order_item, order, table in result.all():
+        base = OrderItemOut.model_validate(order_item).model_dump()
+        out.append(
+            KitchenQueueItemOut(
+                **base,
+                order_id=order.id,
+                pickup_number=order.pickup_number,
+                table_number=table.number if table else None,
+            )
+        )
+    return out
 
 
 @router.post("/order-items/{item_id}/claim", response_model=OrderItemOut)

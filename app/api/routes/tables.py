@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import ensure_staff_belongs, get_current_staff, get_restaurant_or_404, require_capability
 from app.core.database import get_db
+from app.models.floor import Floor
 from app.models.table import RestaurantTable
 from app.models.user import User
 from app.schemas.table import TableCreate, TableOut, TableUpdate
@@ -13,12 +14,23 @@ from app.schemas.table import TableCreate, TableOut, TableUpdate
 router = APIRouter(prefix="/restaurants/{slug}/tables", tags=["tables"])
 
 
+async def _validate_floor(restaurant_id: uuid.UUID, floor_id: uuid.UUID | None, db: AsyncSession) -> None:
+    if floor_id is None:
+        return
+    result = await db.execute(select(Floor).where(Floor.id == floor_id, Floor.restaurant_id == restaurant_id))
+    if result.scalar_one_or_none() is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Floor not found for this restaurant")
+
+
 @router.get("", response_model=list[TableOut])
-async def list_tables(slug: str, db: AsyncSession = Depends(get_db)) -> list[RestaurantTable]:
+async def list_tables(
+    slug: str, floor_id: uuid.UUID | None = None, db: AsyncSession = Depends(get_db)
+) -> list[RestaurantTable]:
     restaurant = await get_restaurant_or_404(slug, db)
-    result = await db.execute(
-        select(RestaurantTable).where(RestaurantTable.restaurant_id == restaurant.id).order_by(RestaurantTable.number)
-    )
+    query = select(RestaurantTable).where(RestaurantTable.restaurant_id == restaurant.id)
+    if floor_id is not None:
+        query = query.where(RestaurantTable.floor_id == floor_id)
+    result = await db.execute(query.order_by(RestaurantTable.number))
     return list(result.scalars().all())
 
 
@@ -40,6 +52,8 @@ async def create_table(
     )
     if existing.scalar_one_or_none() is not None:
         raise HTTPException(status.HTTP_409_CONFLICT, "Table number already exists")
+
+    await _validate_floor(restaurant.id, payload.floor_id, db)
 
     table = RestaurantTable(restaurant_id=restaurant.id, **payload.model_dump())
     db.add(table)
@@ -67,7 +81,11 @@ async def update_table(
     if table is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Table not found")
 
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    update_data = payload.model_dump(exclude_unset=True)
+    if "floor_id" in update_data:
+        await _validate_floor(restaurant.id, update_data["floor_id"], db)
+
+    for field, value in update_data.items():
         setattr(table, field, value)
 
     await db.commit()

@@ -1,4 +1,5 @@
 from app.models.base import Base
+from app.models.floor import Floor
 from app.models.menu import MenuItem, MenuSection, QueueType
 from app.models.order import (
     FulfillmentMode,
@@ -17,6 +18,7 @@ __all__ = [
     "Base",
     "Restaurant",
     "RestaurantTable",
+    "Floor",
     "MenuSection",
     "MenuItem",
     "QueueType",

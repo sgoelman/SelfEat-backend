@@ -1,3 +1,5 @@
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +19,7 @@ from app.schemas.settings import (
     SignupGiftUpdate,
     StaffCreate,
     StaffOut,
+    StaffUpdate,
 )
 
 router = APIRouter(prefix="/restaurants/{slug}", tags=["settings"])
@@ -107,6 +110,32 @@ async def create_staff(
     await db.commit()
     await db.refresh(new_staff)
     return new_staff
+
+
+@router.patch("/staff/{staff_id}", response_model=StaffOut)
+async def update_staff(
+    slug: str,
+    staff_id: uuid.UUID,
+    payload: StaffUpdate,
+    db: AsyncSession = Depends(get_db),
+    staff: User = Depends(get_current_staff),
+) -> User:
+    restaurant = await get_restaurant_or_404(slug, db)
+    ensure_staff_belongs(restaurant, staff)
+    require_capability(restaurant, staff, "manage_staff")
+
+    result = await db.execute(select(User).where(User.id == staff_id, User.restaurant_id == restaurant.id))
+    target = result.scalar_one_or_none()
+    if target is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Staff member not found")
+
+    if target.role == UserRole.owner or payload.role == UserRole.owner:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cannot change the owner's role, or grant the owner role, via this endpoint.")
+
+    target.role = payload.role
+    await db.commit()
+    await db.refresh(target)
+    return target
 
 
 # Below this average order value, a % discount on the next order costs the restaurant less

@@ -97,6 +97,50 @@ async def test_manager_cannot_create_owner_via_staff_endpoint(client, restaurant
     assert resp.status_code == 400
 
 
+async def test_update_staff_role(client, restaurant):
+    slug = restaurant["slug"]
+    headers = restaurant["owner_headers"]
+
+    waiter = await create_staff_member(
+        client, slug, headers, email="promote-me@test.selfeat", password="waiterpass123", role="waiter"
+    )
+
+    resp = await client.patch(
+        f"/restaurants/{slug}/staff/{waiter['user']['id']}",
+        json={"role": "manager"},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["role"] == "manager"
+
+
+async def test_update_staff_role_rejects_owner_target_or_role(client, restaurant):
+    slug = restaurant["slug"]
+    headers = restaurant["owner_headers"]
+
+    waiter = await create_staff_member(
+        client, slug, headers, email="stay-waiter@test.selfeat", password="waiterpass123", role="waiter"
+    )
+
+    # Can't promote a staff member to owner.
+    resp = await client.patch(
+        f"/restaurants/{slug}/staff/{waiter['user']['id']}",
+        json={"role": "owner"},
+        headers=headers,
+    )
+    assert resp.status_code == 400
+
+    # Can't change the owner's own role via this endpoint.
+    me_resp = await client.get(f"/restaurants/{slug}/staff", headers=headers)
+    owner_id = next(u["id"] for u in me_resp.json() if u["role"] == "owner")
+    resp = await client.patch(
+        f"/restaurants/{slug}/staff/{owner_id}",
+        json={"role": "manager"},
+        headers=headers,
+    )
+    assert resp.status_code == 400
+
+
 async def test_update_signup_gift(client, restaurant):
     slug = restaurant["slug"]
     headers = restaurant["owner_headers"]

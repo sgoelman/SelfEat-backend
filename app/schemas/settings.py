@@ -22,6 +22,10 @@ class StaffCreate(BaseModel):
     name: str | None = None
 
 
+class StaffUpdate(BaseModel):
+    role: UserRole
+
+
 class StaffOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

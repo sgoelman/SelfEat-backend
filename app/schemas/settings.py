@@ -32,8 +32,14 @@ class StaffOut(BaseModel):
 
 
 class SignupGiftUpdate(BaseModel):
-    menu_item_id: uuid.UUID | None = None  # None clears the gift (no signup incentive offered)
+    gift_type: str = "item"  # "item" | "discount"
+    menu_item_id: uuid.UUID | None = None  # required when gift_type == "item"
+    discount_percent: float | None = None  # required when gift_type == "discount"
 
 
 class SignupGiftOut(BaseModel):
+    gift_type: str
     menu_item_id: uuid.UUID | None
+    discount_percent: float | None
+    average_order_value: float | None  # None if the restaurant has no orders yet
+    discount_suggested: bool  # True when average_order_value is known and under the $15 guidance threshold

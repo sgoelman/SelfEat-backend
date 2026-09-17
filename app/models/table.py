@@ -14,6 +14,7 @@ class RestaurantTable(Base):
     restaurant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("restaurants.id"), index=True)
     number: Mapped[int] = mapped_column(Integer)
     shape: Mapped[str] = mapped_column(String(20), default="round")
+    material: Mapped[str] = mapped_column(String(20), default="wood")
     color: Mapped[str] = mapped_column(String(20), default="#c8a15a")
     pos_x: Mapped[float] = mapped_column(Float, default=0)
     pos_y: Mapped[float] = mapped_column(Float, default=0)

@@ -17,4 +17,5 @@ class Restaurant(Base):
     languages: Mapped[list[str]] = mapped_column(JSON, default=list)
     bank_details: Mapped[dict] = mapped_column(JSON, default=dict)
     role_permissions: Mapped[dict] = mapped_column(JSON, default=default_role_permissions)
+    plan: Mapped[str] = mapped_column(String(20), default="free")  # "free" | "pro" — gates Pro-only features like AI menu upload
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))

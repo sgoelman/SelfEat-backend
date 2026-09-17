@@ -80,6 +80,23 @@ async def test_create_staff_rejects_short_password(client, restaurant):
     assert resp.status_code == 422
 
 
+async def test_manager_cannot_create_owner_via_staff_endpoint(client, restaurant):
+    """A manager has manage_staff by default — without this check they could grant
+    themselves (or an accomplice) full owner access by POSTing role=owner directly,
+    bypassing the frontend chip picker that only offers non-owner roles."""
+    slug = restaurant["slug"]
+    manager = await create_staff_member(
+        client, slug, restaurant["owner_headers"], email="manager@test.selfeat", password="managerpass123", role="manager"
+    )
+
+    resp = await client.post(
+        f"/restaurants/{slug}/staff",
+        json={"email": "sneaky-owner@test.selfeat", "password": "sneakypass123", "role": "owner"},
+        headers=manager["headers"],
+    )
+    assert resp.status_code == 400
+
+
 async def test_update_signup_gift(client, restaurant):
     slug = restaurant["slug"]
     headers = restaurant["owner_headers"]

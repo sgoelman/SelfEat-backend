@@ -93,6 +93,9 @@ async def create_staff(
     ensure_staff_belongs(restaurant, staff)
     require_capability(restaurant, staff, "manage_staff")
 
+    if payload.role == UserRole.owner:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cannot create a staff member with the owner role.")
+
     new_staff = User(
         restaurant_id=restaurant.id,
         role=payload.role,

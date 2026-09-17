@@ -10,8 +10,14 @@ from app.models.base import Base
 
 class UserRole(str, enum.Enum):
     owner = "owner"
-    staff = "staff"
+    manager = "manager"
+    waiter = "waiter"
+    kitchen = "kitchen"
+    chef = "chef"
     customer = "customer"
+
+
+STAFF_ROLES = {UserRole.owner, UserRole.manager, UserRole.waiter, UserRole.kitchen, UserRole.chef}
 
 
 class User(Base):

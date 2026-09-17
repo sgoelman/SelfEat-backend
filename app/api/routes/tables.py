@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import ensure_staff_belongs, get_current_staff, get_restaurant_or_404
+from app.api.deps import ensure_staff_belongs, get_current_staff, get_restaurant_or_404, require_capability
 from app.core.database import get_db
 from app.models.table import RestaurantTable
 from app.models.user import User
@@ -31,6 +31,7 @@ async def create_table(
 ) -> RestaurantTable:
     restaurant = await get_restaurant_or_404(slug, db)
     ensure_staff_belongs(restaurant, staff)
+    require_capability(restaurant, staff, "manage_tables")
 
     existing = await db.execute(
         select(RestaurantTable).where(
@@ -57,6 +58,7 @@ async def update_table(
 ) -> RestaurantTable:
     restaurant = await get_restaurant_or_404(slug, db)
     ensure_staff_belongs(restaurant, staff)
+    require_capability(restaurant, staff, "manage_tables")
 
     result = await db.execute(
         select(RestaurantTable).where(RestaurantTable.id == table_id, RestaurantTable.restaurant_id == restaurant.id)
@@ -82,6 +84,7 @@ async def delete_table(
 ) -> None:
     restaurant = await get_restaurant_or_404(slug, db)
     ensure_staff_belongs(restaurant, staff)
+    require_capability(restaurant, staff, "manage_tables")
 
     result = await db.execute(
         select(RestaurantTable).where(RestaurantTable.id == table_id, RestaurantTable.restaurant_id == restaurant.id)

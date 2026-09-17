@@ -4,10 +4,11 @@ from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisco
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import ensure_staff_belongs, get_current_staff, get_restaurant_or_404
+from app.api.deps import ensure_staff_belongs, get_current_staff, get_restaurant_or_404, require_capability
 from app.core.database import AsyncSessionLocal, get_db
 from app.models.menu import MenuItem, QueueType
 from app.models.order import Order, OrderItem, OrderItemStatus
+from app.models.restaurant import Restaurant
 from app.models.user import User
 from app.schemas.order import ClaimRequest, OrderItemOut
 from app.services.queue_manager import queue_manager
@@ -37,6 +38,7 @@ async def list_queue(
 ) -> list[OrderItem]:
     restaurant = await get_restaurant_or_404(slug, db)
     ensure_staff_belongs(restaurant, staff)
+    require_capability(restaurant, staff, "view_kitchen_queue")
 
     result = await db.execute(
         select(OrderItem)
@@ -61,6 +63,8 @@ async def claim_item(
     order_item, order, menu_item = await _load_item_with_context(item_id, db)
     if staff.restaurant_id != order.restaurant_id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not authorized for this restaurant")
+    restaurant = await db.get(Restaurant, order.restaurant_id)
+    require_capability(restaurant, staff, "claim_kitchen_items")
 
     order_item.status = OrderItemStatus.in_progress
     order_item.assigned_staff_name = payload.staff_name
@@ -84,6 +88,8 @@ async def mark_ready(
     order_item, order, menu_item = await _load_item_with_context(item_id, db)
     if staff.restaurant_id != order.restaurant_id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not authorized for this restaurant")
+    restaurant = await db.get(Restaurant, order.restaurant_id)
+    require_capability(restaurant, staff, "claim_kitchen_items")
 
     order_item.status = OrderItemStatus.ready
     await db.commit()

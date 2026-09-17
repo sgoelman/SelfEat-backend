@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import ensure_staff_belongs, get_current_staff, get_restaurant_or_404
+from app.api.deps import ensure_staff_belongs, get_current_staff, get_restaurant_or_404, require_capability
 from app.core.database import get_db
 from app.models.menu import MenuItem, MenuSection
 from app.models.user import User
@@ -22,6 +22,7 @@ async def create_section(
 ) -> MenuSection:
     restaurant = await get_restaurant_or_404(slug, db)
     ensure_staff_belongs(restaurant, staff)
+    require_capability(restaurant, staff, "manage_menu")
 
     section = MenuSection(restaurant_id=restaurant.id, **payload.model_dump())
     db.add(section)
@@ -39,6 +40,7 @@ async def create_item(
 ) -> MenuItem:
     restaurant = await get_restaurant_or_404(slug, db)
     ensure_staff_belongs(restaurant, staff)
+    require_capability(restaurant, staff, "manage_menu")
 
     section_result = await db.execute(
         select(MenuSection).where(MenuSection.id == payload.section_id, MenuSection.restaurant_id == restaurant.id)
@@ -63,6 +65,7 @@ async def update_item(
 ) -> MenuItem:
     restaurant = await get_restaurant_or_404(slug, db)
     ensure_staff_belongs(restaurant, staff)
+    require_capability(restaurant, staff, "manage_menu")
 
     result = await db.execute(
         select(MenuItem)
@@ -90,6 +93,7 @@ async def delete_item(
 ) -> None:
     restaurant = await get_restaurant_or_404(slug, db)
     ensure_staff_belongs(restaurant, staff)
+    require_capability(restaurant, staff, "manage_menu")
 
     result = await db.execute(
         select(MenuItem)

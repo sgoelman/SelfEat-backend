@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.security import decode_access_token
 from app.models.restaurant import Restaurant
-from app.models.user import User, UserRole
+from app.models.user import STAFF_ROLES, User
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -44,7 +44,16 @@ async def get_current_staff(
 
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
-    if user is None or user.role not in (UserRole.owner, UserRole.staff):
+    if user is None or user.role not in STAFF_ROLES:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired token")
 
     return user
+
+
+def require_capability(restaurant: Restaurant, staff: User, capability: str) -> None:
+    """Raise 403 unless the restaurant's current role_permissions grants this capability to staff.role."""
+    allowed = restaurant.role_permissions.get(staff.role.value, [])
+    if capability not in allowed:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, f"Role '{staff.role.value}' does not have '{capability}' permission"
+        )

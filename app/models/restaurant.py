@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from sqlalchemy import JSON, String
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.core.permissions import default_role_permissions
 from app.models.base import Base
 
 
@@ -15,4 +16,5 @@ class Restaurant(Base):
     name: Mapped[str] = mapped_column(String(200))
     languages: Mapped[list[str]] = mapped_column(JSON, default=list)
     bank_details: Mapped[dict] = mapped_column(JSON, default=dict)
+    role_permissions: Mapped[dict] = mapped_column(JSON, default=default_role_permissions)
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))

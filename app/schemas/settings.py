@@ -29,3 +29,11 @@ class StaffOut(BaseModel):
     email: str | None
     name: str | None
     role: UserRole
+
+
+class SignupGiftUpdate(BaseModel):
+    menu_item_id: uuid.UUID | None = None  # None clears the gift (no signup incentive offered)
+
+
+class SignupGiftOut(BaseModel):
+    menu_item_id: uuid.UUID | None

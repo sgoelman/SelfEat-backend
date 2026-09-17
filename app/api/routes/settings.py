@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -6,9 +6,17 @@ from app.api.deps import ensure_staff_belongs, get_current_staff, get_restaurant
 from app.core.database import get_db
 from app.core.permissions import CAPABILITIES
 from app.core.security import hash_password
+from app.models.menu import MenuItem, MenuSection
 from app.models.restaurant import Restaurant
 from app.models.user import User, UserRole
-from app.schemas.settings import RolePermissionsOut, RolePermissionsUpdate, StaffCreate, StaffOut
+from app.schemas.settings import (
+    RolePermissionsOut,
+    RolePermissionsUpdate,
+    SignupGiftOut,
+    SignupGiftUpdate,
+    StaffCreate,
+    StaffOut,
+)
 
 router = APIRouter(prefix="/restaurants/{slug}", tags=["settings"])
 
@@ -95,3 +103,34 @@ async def create_staff(
     await db.commit()
     await db.refresh(new_staff)
     return new_staff
+
+
+@router.put("/settings/gift", response_model=SignupGiftOut)
+async def update_signup_gift(
+    slug: str,
+    payload: SignupGiftUpdate,
+    db: AsyncSession = Depends(get_db),
+    staff: User = Depends(get_current_staff),
+) -> SignupGiftOut:
+    """The item offered free to a customer for signing up instead of staying anonymous.
+
+    Redemption/verification lives in the diner app (not built yet) — this just lets the
+    restaurant choose which of their own menu items to offer.
+    """
+    restaurant = await get_restaurant_or_404(slug, db)
+    ensure_staff_belongs(restaurant, staff)
+    require_capability(restaurant, staff, "manage_settings")
+
+    if payload.menu_item_id is not None:
+        owned_result = await db.execute(
+            select(MenuItem)
+            .join(MenuSection, MenuItem.section_id == MenuSection.id)
+            .where(MenuItem.id == payload.menu_item_id, MenuSection.restaurant_id == restaurant.id)
+        )
+        if owned_result.scalar_one_or_none() is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Menu item not found for this restaurant")
+
+    restaurant.signup_gift_item_id = payload.menu_item_id
+    await db.commit()
+    await db.refresh(restaurant)
+    return SignupGiftOut(menu_item_id=restaurant.signup_gift_item_id)

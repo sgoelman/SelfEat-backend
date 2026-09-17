@@ -10,6 +10,7 @@ class RestaurantPublic(BaseModel):
     slug: str
     name: str
     languages: list[str]
+    signup_gift_item_id: uuid.UUID | None = None
 
 
 class RestaurantCreate(BaseModel):

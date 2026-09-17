@@ -45,3 +45,12 @@ class TableOut(BaseModel):
     width: float
     height: float
     qr_token: str
+
+
+class QrResolveOut(BaseModel):
+    """What a diner's scanned QR code resolves to — the bootstrap call before menu/order endpoints."""
+
+    restaurant_slug: str
+    restaurant_name: str
+    table_id: uuid.UUID
+    table_number: int

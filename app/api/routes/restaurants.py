@@ -9,11 +9,38 @@ from app.core.database import get_db
 from app.core.security import hash_password
 from app.models.menu import MenuItem, MenuSection
 from app.models.restaurant import Restaurant
+from app.models.table import RestaurantTable
 from app.models.user import User, UserRole
 from app.schemas.menu import MenuItemOut, MenuSectionWithItems
 from app.schemas.restaurant import RestaurantCreate, RestaurantPublic
+from app.schemas.table import QrResolveOut
 
 router = APIRouter(prefix="/restaurants", tags=["restaurants"])
+
+
+@router.get("/qr/{qr_token}", response_model=QrResolveOut)
+async def resolve_qr_token(qr_token: str, db: AsyncSession = Depends(get_db)) -> QrResolveOut:
+    """Bootstrap call for the diner app: turns a scanned table QR code into a restaurant + table.
+
+    Counter/pickup QR codes (kiosk mode) don't go through this — they encode the restaurant slug
+    directly (see SettingsScreen's counter QR) since there's no table to resolve.
+    """
+    result = await db.execute(
+        select(RestaurantTable, Restaurant)
+        .join(Restaurant, RestaurantTable.restaurant_id == Restaurant.id)
+        .where(RestaurantTable.qr_token == qr_token)
+    )
+    row = result.first()
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Unrecognized QR code")
+    table, restaurant = row
+
+    return QrResolveOut(
+        restaurant_slug=restaurant.slug,
+        restaurant_name=restaurant.name,
+        table_id=table.id,
+        table_number=table.number,
+    )
 
 
 @router.post("", response_model=RestaurantPublic, status_code=status.HTTP_201_CREATED)

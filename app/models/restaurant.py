@@ -15,6 +15,11 @@ class Restaurant(Base):
     slug: Mapped[str] = mapped_column(String(80), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(200))
     languages: Mapped[list[str]] = mapped_column(JSON, default=list)
+    # Which of `languages` menu content displays in when a diner hasn't got (or overrides) a
+    # language preference of their own — see the diner app's LanguageContext. Explicit rather
+    # than relying on languages[0] ordering, which was ambiguous (nothing enforced it, and
+    # reordering the list would have silently changed the default).
+    default_language: Mapped[str] = mapped_column(String(5), default="en")
     bank_details: Mapped[dict] = mapped_column(JSON, default=dict)
     role_permissions: Mapped[dict] = mapped_column(JSON, default=default_role_permissions)
     plan: Mapped[str] = mapped_column(String(20), default="free")  # "free" | "pro" — gates Pro-only features like AI menu upload

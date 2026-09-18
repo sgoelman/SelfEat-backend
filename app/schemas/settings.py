@@ -47,3 +47,19 @@ class SignupGiftOut(BaseModel):
     discount_percent: float | None
     average_order_value: float | None  # None if the restaurant has no orders yet
     discount_suggested: bool  # True when average_order_value is known and under the $15 guidance threshold
+
+
+# Only EN/DE supported for now — Sahar's call 2026-09-18, same scope as the diner app's
+# LanguageContext. FR/IT come later alongside real auto-translation.
+SUPPORTED_LANGUAGES = ("en", "de")
+
+
+class LanguageSettingsUpdate(BaseModel):
+    languages: list[str]
+    default_language: str
+
+
+class LanguageSettingsOut(BaseModel):
+    languages: list[str]
+    default_language: str
+    supported_languages: list[str] = list(SUPPORTED_LANGUAGES)

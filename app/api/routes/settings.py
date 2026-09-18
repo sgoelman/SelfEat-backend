@@ -13,6 +13,9 @@ from app.models.order import Order, OrderStatus
 from app.models.restaurant import Restaurant
 from app.models.user import User, UserRole
 from app.schemas.settings import (
+    SUPPORTED_LANGUAGES,
+    LanguageSettingsOut,
+    LanguageSettingsUpdate,
     RolePermissionsOut,
     RolePermissionsUpdate,
     SignupGiftOut,
@@ -136,6 +139,71 @@ async def update_staff(
     await db.commit()
     await db.refresh(target)
     return target
+
+
+@router.delete("/staff/{staff_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_staff(
+    slug: str,
+    staff_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    staff: User = Depends(get_current_staff),
+) -> None:
+    restaurant = await get_restaurant_or_404(slug, db)
+    ensure_staff_belongs(restaurant, staff)
+    require_capability(restaurant, staff, "manage_staff")
+
+    result = await db.execute(select(User).where(User.id == staff_id, User.restaurant_id == restaurant.id))
+    target = result.scalar_one_or_none()
+    if target is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Staff member not found")
+
+    if target.role == UserRole.owner:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cannot remove the owner.")
+    if target.id == staff.id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cannot remove your own account while logged in as it.")
+
+    await db.delete(target)
+    await db.commit()
+
+
+@router.get("/settings/language", response_model=LanguageSettingsOut)
+async def get_language_settings(
+    slug: str,
+    db: AsyncSession = Depends(get_db),
+    staff: User = Depends(get_current_staff),
+) -> LanguageSettingsOut:
+    restaurant = await get_restaurant_or_404(slug, db)
+    ensure_staff_belongs(restaurant, staff)
+    require_capability(restaurant, staff, "manage_settings")
+
+    return LanguageSettingsOut(languages=restaurant.languages, default_language=restaurant.default_language)
+
+
+@router.put("/settings/language", response_model=LanguageSettingsOut)
+async def update_language_settings(
+    slug: str,
+    payload: LanguageSettingsUpdate,
+    db: AsyncSession = Depends(get_db),
+    staff: User = Depends(get_current_staff),
+) -> LanguageSettingsOut:
+    restaurant = await get_restaurant_or_404(slug, db)
+    ensure_staff_belongs(restaurant, staff)
+    require_capability(restaurant, staff, "manage_settings")
+
+    if not payload.languages:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Select at least one language")
+    unsupported = [lang for lang in payload.languages if lang not in SUPPORTED_LANGUAGES]
+    if unsupported:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"Unsupported language(s): {', '.join(unsupported)}")
+    if payload.default_language not in payload.languages:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "default_language must be one of the selected languages")
+
+    restaurant.languages = payload.languages
+    restaurant.default_language = payload.default_language
+    await db.commit()
+    await db.refresh(restaurant)
+
+    return LanguageSettingsOut(languages=restaurant.languages, default_language=restaurant.default_language)
 
 
 # Below this average order value, a % discount on the next order costs the restaurant less

@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
 from sqlalchemy import select
@@ -108,6 +109,7 @@ async def mark_ready(
     require_capability(restaurant, staff, "claim_kitchen_items")
 
     order_item.status = OrderItemStatus.ready
+    order_item.ready_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(order_item)
 

@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import auth, floors, kitchen, menu, orders, restaurants, settings as settings_routes, tables
+from app.api.routes import auth, floors, kitchen, menu, orders, restaurants, settings as settings_routes, tables, waiter
 from app.core.config import settings
 from app.core.database import engine
 from app.models.base import Base
@@ -33,6 +33,7 @@ app.include_router(floors.router)
 app.include_router(menu.router)
 app.include_router(orders.router)
 app.include_router(kitchen.router)
+app.include_router(waiter.router)
 app.include_router(settings_routes.router)
 
 

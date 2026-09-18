@@ -10,6 +10,7 @@ CAPABILITIES = [
     "view_kitchen_queue",
     "claim_kitchen_items",
     "manage_orders",
+    "deliver_orders",
 ]
 
 # Sensible restaurant-world defaults, applied when a restaurant is created.
@@ -23,8 +24,9 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, list[str]] = {
         "view_kitchen_queue",
         "claim_kitchen_items",
         "manage_orders",
+        "deliver_orders",
     ],
-    UserRole.waiter.value: ["view_kitchen_queue", "manage_orders"],
+    UserRole.waiter.value: ["view_kitchen_queue", "manage_orders", "deliver_orders"],
     UserRole.kitchen.value: ["view_kitchen_queue", "claim_kitchen_items"],
     UserRole.chef.value: ["view_kitchen_queue", "claim_kitchen_items", "manage_menu"],
 }

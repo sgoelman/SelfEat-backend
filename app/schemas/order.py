@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
@@ -65,3 +66,27 @@ class KitchenQueueItemOut(OrderItemOut):
     # includes this (menu_item_name), but the REST list this schema backs didn't, so a kitchen
     # screen that only loaded via GET (no live event yet) would see a queue of bare item IDs.
     menu_item_name: dict[str, str]
+
+
+class WaiterReadyItemOut(BaseModel):
+    id: uuid.UUID
+    menu_item_name: dict[str, str]
+    quantity: int
+    ready_at: datetime
+
+
+class WaiterDestinationOut(BaseModel):
+    """One destination-first card, per UI/UX's design — a table or a pickup order, with every
+    item that's ready for it grouped together, rather than one row per item."""
+
+    table_number: int | None
+    pickup_number: int | None
+    items: list[WaiterReadyItemOut]
+    oldest_ready_at: datetime  # drives the card's own urgency color — its longest-waiting item
+
+
+class WaiterDisplayOut(BaseModel):
+    destinations: list[WaiterDestinationOut]
+    # Feeds UI/UX's collapsed, non-interactive "Still in the kitchen" line — situational
+    # awareness without competing for the waiter's attention the way the ready list should.
+    still_in_kitchen_count: int

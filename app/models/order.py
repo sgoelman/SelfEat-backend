@@ -75,3 +75,8 @@ class OrderItem(Base):
     serve_after_food: Mapped[bool] = mapped_column(Boolean, default=False)
     serve_delay_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), index=True)
+    # When this item transitioned into ready/delivered — the Waiter Display's urgency coloring is
+    # based on elapsed time since ready_at (how long has this been sitting, waiting for a waiter),
+    # which created_at can't answer since that's order-placement time, not prep-completion time.
+    ready_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    delivered_at: Mapped[datetime | None] = mapped_column(nullable=True)

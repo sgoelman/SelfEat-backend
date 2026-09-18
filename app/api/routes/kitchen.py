@@ -42,7 +42,7 @@ async def list_queue(
     require_capability(restaurant, staff, "view_kitchen_queue")
 
     result = await db.execute(
-        select(OrderItem, Order, RestaurantTable)
+        select(OrderItem, Order, RestaurantTable, MenuItem)
         .join(Order, OrderItem.order_id == Order.id)
         .join(MenuItem, OrderItem.menu_item_id == MenuItem.id)
         .outerjoin(RestaurantTable, Order.table_id == RestaurantTable.id)
@@ -55,7 +55,7 @@ async def list_queue(
         .order_by(OrderItem.created_at)
     )
     out: list[KitchenQueueItemOut] = []
-    for order_item, order, table in result.all():
+    for order_item, order, table, menu_item in result.all():
         base = OrderItemOut.model_validate(order_item).model_dump()
         out.append(
             KitchenQueueItemOut(
@@ -63,6 +63,7 @@ async def list_queue(
                 order_id=order.id,
                 pickup_number=order.pickup_number,
                 table_number=table.number if table else None,
+                menu_item_name=menu_item.name,
             )
         )
     return out

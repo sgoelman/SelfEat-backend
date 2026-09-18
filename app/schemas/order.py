@@ -61,3 +61,7 @@ class KitchenQueueItemOut(OrderItemOut):
     order_id: uuid.UUID
     pickup_number: int | None
     table_number: int | None
+    # Per-language dict, matching MenuItem.name — the WS broadcast in create_order already
+    # includes this (menu_item_name), but the REST list this schema backs didn't, so a kitchen
+    # screen that only loaded via GET (no live event yet) would see a queue of bare item IDs.
+    menu_item_name: dict[str, str]

@@ -5,10 +5,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_restaurant_or_404
+from app.api.deps import get_current_customer_optional, get_restaurant_or_404
 from app.core.database import get_db
 from app.models.menu import MenuItem, MenuSection
 from app.models.order import Order, OrderItem
+from app.models.user import User
 from app.schemas.order import OrderCreate, OrderOut
 from app.services.queue_manager import queue_manager
 
@@ -29,7 +30,12 @@ async def _next_pickup_number(restaurant_id: uuid.UUID, db: AsyncSession) -> int
 
 
 @router.post("/restaurants/{slug}/orders", response_model=OrderOut, status_code=status.HTTP_201_CREATED)
-async def create_order(slug: str, payload: OrderCreate, db: AsyncSession = Depends(get_db)) -> Order:
+async def create_order(
+    slug: str,
+    payload: OrderCreate,
+    db: AsyncSession = Depends(get_db),
+    customer: User | None = Depends(get_current_customer_optional),
+) -> Order:
     restaurant = await get_restaurant_or_404(slug, db)
 
     if not payload.items:
@@ -40,6 +46,7 @@ async def create_order(slug: str, payload: OrderCreate, db: AsyncSession = Depen
     order = Order(
         restaurant_id=restaurant.id,
         table_id=payload.table_id,
+        customer_id=customer.id if customer else None,
         pickup_number=pickup_number,
         fulfillment_mode=payload.fulfillment_mode,
         payment_method=payload.payment_method,

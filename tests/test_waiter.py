@@ -1,5 +1,8 @@
 import uuid
 
+from sqlalchemy import select
+
+from app.models.order import OrderItem
 from tests.conftest import create_staff_member
 
 
@@ -52,6 +55,28 @@ async def test_waiter_display_separates_different_destinations(client, restauran
 
     resp = await client.get(f"/restaurants/{slug}/waiter/display", headers=headers)
     assert len(resp.json()["destinations"]) == 2
+
+
+async def test_waiter_display_handles_legacy_item_with_no_ready_at(client, db_session, restaurant):
+    """A real production scenario, not just a data-cleanliness nicety: any order_item already
+    `ready` at the moment this feature's migration deploys has status=ready but ready_at=NULL,
+    since that column didn't exist yet when it was set. Caught manually (not by the other tests
+    here, which all go through the current code path and always get a real ready_at) — this
+    endpoint used to crash outright on exactly this row shape instead of falling back to
+    created_at."""
+    slug = restaurant["slug"]
+    headers = restaurant["owner_headers"]
+    order, item_id = await _place_and_ready_order(client, slug, headers, name="Legacy Item")
+
+    result = await db_session.execute(select(OrderItem).where(OrderItem.id == uuid.UUID(item_id)))
+    order_item = result.scalar_one()
+    order_item.ready_at = None
+    await db_session.commit()
+
+    resp = await client.get(f"/restaurants/{slug}/waiter/display", headers=headers)
+    assert resp.status_code == 200
+    assert len(resp.json()["destinations"]) == 1
+    assert resp.json()["destinations"][0]["oldest_ready_at"] is not None
 
 
 async def test_waiter_display_excludes_queued_and_in_progress_items(client, restaurant):

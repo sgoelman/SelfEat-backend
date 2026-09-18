@@ -30,25 +30,31 @@ async def get_waiter_display(
     ensure_staff_belongs(restaurant, staff)
     require_capability(restaurant, staff, "deliver_orders")
 
+    # coalesce to created_at: an item already `ready` from before ready_at existed (e.g. at the
+    # moment this migration deploys, for any restaurant with orders already in flight) would
+    # otherwise have a NULL ready_at and crash this endpoint outright — created_at is an
+    # imperfect but safe, non-crashing stand-in for those legacy rows.
+    effective_ready_at = func.coalesce(OrderItem.ready_at, OrderItem.created_at)
+
     ready_result = await db.execute(
-        select(OrderItem, Order, RestaurantTable, MenuItem)
+        select(OrderItem, Order, RestaurantTable, MenuItem, effective_ready_at)
         .join(Order, OrderItem.order_id == Order.id)
         .join(MenuItem, OrderItem.menu_item_id == MenuItem.id)
         .outerjoin(RestaurantTable, Order.table_id == RestaurantTable.id)
         .where(Order.restaurant_id == restaurant.id, OrderItem.status == OrderItemStatus.ready)
-        .order_by(OrderItem.ready_at)
+        .order_by(effective_ready_at)
     )
 
     # Grouped in Python, not SQL — same "fine at small-kiosk/restaurant volume, not built for
     # heavy concurrent scale" tradeoff already made elsewhere in this codebase (see
     # _next_pickup_number in routes/orders.py).
     destinations: dict[tuple[int | None, int | None], WaiterDestinationOut] = {}
-    for order_item, order, table, menu_item in ready_result.all():
+    for order_item, order, table, menu_item, ready_at in ready_result.all():
         key = (table.number if table else None, order.pickup_number)
-        item_out = WaiterReadyItemOut(id=order_item.id, menu_item_name=menu_item.name, quantity=order_item.quantity, ready_at=order_item.ready_at)
+        item_out = WaiterReadyItemOut(id=order_item.id, menu_item_name=menu_item.name, quantity=order_item.quantity, ready_at=ready_at)
         if key not in destinations:
             destinations[key] = WaiterDestinationOut(
-                table_number=key[0], pickup_number=key[1], items=[item_out], oldest_ready_at=order_item.ready_at
+                table_number=key[0], pickup_number=key[1], items=[item_out], oldest_ready_at=ready_at
             )
         else:
             destinations[key].items.append(item_out)

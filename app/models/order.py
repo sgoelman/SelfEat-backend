@@ -69,7 +69,14 @@ class OrderItem(Base):
     menu_item_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("menu_items.id"))
     quantity: Mapped[int] = mapped_column(Integer, default=1)
     unit_price: Mapped[float] = mapped_column(Float)
-    customizations: Mapped[dict] = mapped_column(JSON, default=dict)
+    # Denormalized snapshot of the diner's resolved modifier selections (group/option names +
+    # price, not just ids) — see SelectedModifierOut / _resolve_customizations in
+    # routes/orders.py. Stays accurate on the kitchen ticket even if the menu item is edited later.
+    customizations: Mapped[list] = mapped_column(JSON, default=list)
+    # Free-text catch-all alongside the structured customizations above, per PM/PO's benchmark:
+    # structured modifiers for anything machine-readable, free text for whatever they don't
+    # anticipate (matches what DACH diners already expect from Lieferando/Wolt).
+    note: Mapped[str | None] = mapped_column(String(500), nullable=True)
     status: Mapped[OrderItemStatus] = mapped_column(Enum(OrderItemStatus), default=OrderItemStatus.queued, index=True)
     assigned_staff_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     serve_after_food: Mapped[bool] = mapped_column(Boolean, default=False)

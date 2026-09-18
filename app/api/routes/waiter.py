@@ -51,7 +51,14 @@ async def get_waiter_display(
     destinations: dict[tuple[int | None, int | None], WaiterDestinationOut] = {}
     for order_item, order, table, menu_item, ready_at in ready_result.all():
         key = (table.number if table else None, order.pickup_number)
-        item_out = WaiterReadyItemOut(id=order_item.id, menu_item_name=menu_item.name, quantity=order_item.quantity, ready_at=ready_at)
+        item_out = WaiterReadyItemOut(
+            id=order_item.id,
+            menu_item_name=menu_item.name,
+            quantity=order_item.quantity,
+            customizations=order_item.customizations,
+            note=order_item.note,
+            ready_at=ready_at,
+        )
         if key not in destinations:
             destinations[key] = WaiterDestinationOut(
                 table_number=key[0], pickup_number=key[1], items=[item_out], oldest_ready_at=ready_at

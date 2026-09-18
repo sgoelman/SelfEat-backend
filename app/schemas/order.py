@@ -6,12 +6,34 @@ from pydantic import BaseModel, ConfigDict
 from app.models.order import FulfillmentMode, OrderItemStatus, OrderStatus, PaymentMethod, PaymentStatus
 
 
+class SelectedModifier(BaseModel):
+    """What the diner picked for one modifier group — just ids, resolved server-side against the
+    menu item's live ModifierGroup definitions (see _resolve_customizations in routes/orders.py)
+    into the self-contained, denormalized snapshot that OrderItemOut.customizations returns."""
+
+    group_id: str
+    option_ids: list[str] = []
+
+
 class OrderItemCreate(BaseModel):
     menu_item_id: uuid.UUID
     quantity: int = 1
-    customizations: dict = {}
+    customizations: list[SelectedModifier] = []
+    note: str | None = None
     serve_after_food: bool = False
     serve_delay_minutes: int | None = None
+
+
+class SelectedModifierOut(BaseModel):
+    """One resolved selection, denormalized at order-creation time (group/option names + price)
+    so it stays accurate on the kitchen ticket even if the menu item's modifiers are edited or
+    removed later — matches the existing menu_item_name denormalization pattern elsewhere here."""
+
+    group_id: str
+    group_name: dict[str, str]
+    option_id: str
+    label: dict[str, str]
+    price_delta: float
 
 
 class OrderCreate(BaseModel):
@@ -29,7 +51,8 @@ class OrderItemOut(BaseModel):
     menu_item_id: uuid.UUID
     quantity: int
     unit_price: float
-    customizations: dict
+    customizations: list[SelectedModifierOut]
+    note: str | None
     status: OrderItemStatus
     assigned_staff_name: str | None
     serve_after_food: bool
@@ -72,6 +95,8 @@ class WaiterReadyItemOut(BaseModel):
     id: uuid.UUID
     menu_item_name: dict[str, str]
     quantity: int
+    customizations: list[SelectedModifierOut]
+    note: str | None
     ready_at: datetime
 
 

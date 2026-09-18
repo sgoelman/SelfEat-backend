@@ -31,4 +31,10 @@ class User(Base):
     hashed_password: Mapped[str | None] = mapped_column(String(200), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
     is_anonymous: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Set together for a diner who signed in via SSO (role=customer); both stay null for
+    # staff/password accounts and for anonymous diners. provider_user_id is that provider's
+    # own stable subject id — not email, since email can be unverified/absent/shared depending
+    # on the provider and the diner's privacy choices (e.g. Apple's private relay addresses).
+    auth_provider: Mapped[str | None] = mapped_column(String(20), nullable=True)  # "google" | "facebook" | "apple"
+    provider_user_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))

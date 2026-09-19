@@ -6,6 +6,7 @@ import app.api.routes.auth as auth_routes
 from app.core.security import hash_password
 from app.core.social_auth import SocialProfile
 from app.models.user import User, UserRole
+from tests.conftest import auth_headers
 
 
 async def test_login_success(client, restaurant):
@@ -110,3 +111,106 @@ async def test_social_login_drops_email_on_collision(client, db_session, monkeyp
     assert resp.status_code == 200, resp.text
     assert resp.json()["email"] is None
     assert resp.json()["is_new_user"] is True
+
+
+async def test_pin_login_success(client, restaurant):
+    slug = restaurant["slug"]
+    create_resp = await client.post(
+        f"/restaurants/{slug}/staff",
+        json={"email": "waiter@test.selfeat", "password": "waiterpass123", "role": "waiter", "pin": "4821"},
+        headers=restaurant["owner_headers"],
+    )
+    assert create_resp.status_code == 201, create_resp.text
+    assert create_resp.json()["has_pin"] is True
+
+    resp = await client.post(f"/auth/pin-login/{slug}", json={"pin": "4821"})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["access_token"]
+
+    # The returned token works like any other staff token — a waiter's default permissions
+    # include viewing the kitchen queue (not staff management, hence checking this endpoint).
+    me_resp = await client.get(f"/restaurants/{slug}/kitchen/main", headers=auth_headers(resp.json()["access_token"]))
+    assert me_resp.status_code == 200
+
+
+async def test_pin_login_wrong_pin(client, restaurant):
+    slug = restaurant["slug"]
+    await client.post(
+        f"/restaurants/{slug}/staff",
+        json={"email": "waiter2@test.selfeat", "password": "waiterpass123", "role": "waiter", "pin": "1111"},
+        headers=restaurant["owner_headers"],
+    )
+    resp = await client.post(f"/auth/pin-login/{slug}", json={"pin": "9999"})
+    assert resp.status_code == 401
+
+
+async def test_pin_login_scoped_to_restaurant(client, restaurant):
+    """A PIN valid at one restaurant must not authenticate at another."""
+    slug = restaurant["slug"]
+    await client.post(
+        f"/restaurants/{slug}/staff",
+        json={"email": "waiter3@test.selfeat", "password": "waiterpass123", "role": "waiter", "pin": "2468"},
+        headers=restaurant["owner_headers"],
+    )
+    other_resp = await client.post(
+        "/restaurants",
+        json={"slug": "other-pin-resto", "name": "Other", "owner_email": "other-pin@x.com", "owner_password": "pass12345"},
+    )
+    assert other_resp.status_code == 201
+
+    resp = await client.post("/auth/pin-login/other-pin-resto", json={"pin": "2468"})
+    assert resp.status_code == 401
+
+
+async def test_create_staff_rejects_duplicate_pin(client, restaurant):
+    slug = restaurant["slug"]
+    headers = restaurant["owner_headers"]
+    first = await client.post(
+        f"/restaurants/{slug}/staff",
+        json={"email": "a@test.selfeat", "password": "waiterpass123", "role": "waiter", "pin": "3333"},
+        headers=headers,
+    )
+    assert first.status_code == 201
+
+    second = await client.post(
+        f"/restaurants/{slug}/staff",
+        json={"email": "b@test.selfeat", "password": "waiterpass123", "role": "kitchen", "pin": "3333"},
+        headers=headers,
+    )
+    assert second.status_code == 409
+
+
+async def test_update_staff_can_set_and_clear_pin(client, restaurant):
+    slug = restaurant["slug"]
+    headers = restaurant["owner_headers"]
+    created = await client.post(
+        f"/restaurants/{slug}/staff",
+        json={"email": "c@test.selfeat", "password": "waiterpass123", "role": "waiter"},
+        headers=headers,
+    )
+    staff_id = created.json()["id"]
+    assert created.json()["has_pin"] is False
+
+    set_resp = await client.patch(f"/restaurants/{slug}/staff/{staff_id}", json={"role": "waiter", "pin": "5555"}, headers=headers)
+    assert set_resp.status_code == 200
+    assert set_resp.json()["has_pin"] is True
+    assert (await client.post(f"/auth/pin-login/{slug}", json={"pin": "5555"})).status_code == 200
+
+    # Role-only update (pin key omitted entirely) must leave the PIN untouched.
+    role_only_resp = await client.patch(f"/restaurants/{slug}/staff/{staff_id}", json={"role": "kitchen"}, headers=headers)
+    assert role_only_resp.status_code == 200
+    assert role_only_resp.json()["has_pin"] is True
+
+    clear_resp = await client.patch(f"/restaurants/{slug}/staff/{staff_id}", json={"role": "kitchen", "pin": None}, headers=headers)
+    assert clear_resp.status_code == 200
+    assert clear_resp.json()["has_pin"] is False
+    assert (await client.post(f"/auth/pin-login/{slug}", json={"pin": "5555"})).status_code == 401
+
+
+async def test_create_staff_rejects_non_4_digit_pin(client, restaurant):
+    resp = await client.post(
+        f"/restaurants/{restaurant['slug']}/staff",
+        json={"email": "d@test.selfeat", "password": "waiterpass123", "role": "waiter", "pin": "12"},
+        headers=restaurant["owner_headers"],
+    )
+    assert resp.status_code == 422

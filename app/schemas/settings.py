@@ -15,15 +15,22 @@ class RolePermissionsUpdate(BaseModel):
     permissions: dict[str, list[str]]
 
 
+PIN_PATTERN = r"^\d{4}$"
+
+
 class StaffCreate(BaseModel):
     email: str
     password: str = Field(min_length=8)
     role: UserRole
     name: str | None = None
+    pin: str | None = Field(default=None, pattern=PIN_PATTERN)
 
 
 class StaffUpdate(BaseModel):
     role: UserRole
+    # Omit entirely to leave the PIN unchanged (checked via model_fields_set, not this default —
+    # see update_staff), null to clear it, or a new 4-digit PIN to set/replace it.
+    pin: str | None = Field(default=None, pattern=PIN_PATTERN)
 
 
 class StaffOut(BaseModel):
@@ -33,6 +40,7 @@ class StaffOut(BaseModel):
     email: str | None
     name: str | None
     role: UserRole
+    has_pin: bool = False
 
 
 class SignupGiftUpdate(BaseModel):

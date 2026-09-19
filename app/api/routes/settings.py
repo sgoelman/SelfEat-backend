@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import ensure_staff_belongs, get_current_staff, get_restaurant_or_404, require_capability
 from app.core.database import get_db
 from app.core.permissions import CAPABILITIES
-from app.core.security import hash_password
+from app.core.security import hash_password, verify_password
 from app.models.menu import MenuItem, MenuSection
 from app.models.order import Order, OrderStatus
 from app.models.restaurant import Restaurant
@@ -26,6 +26,18 @@ from app.schemas.settings import (
 )
 
 router = APIRouter(prefix="/restaurants/{slug}", tags=["settings"])
+
+
+async def _pin_collides_with_other_staff(restaurant_id: uuid.UUID, pin: str, db: AsyncSession, exclude_user_id: uuid.UUID | None = None) -> bool:
+    """PINs are hashed with a per-user salt, so two staff with the same PIN don't produce
+    matching hashes — a duplicate can't be caught by comparing hash strings, only by checking
+    the new PIN against every existing staff member's hash directly (same scan pin_login does).
+    Two staff sharing a PIN would make pin_login's own lookup ambiguous, so this is enforced at
+    write time rather than left to surface as a confusing login bug later."""
+    result = await db.execute(
+        select(User).where(User.restaurant_id == restaurant_id, User.pin_hash.is_not(None), User.id != exclude_user_id)
+    )
+    return any(verify_password(pin, other.pin_hash) for other in result.scalars().all())
 
 
 @router.get("/settings/roles", response_model=RolePermissionsOut)
@@ -102,12 +114,16 @@ async def create_staff(
     if payload.role == UserRole.owner:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cannot create a staff member with the owner role.")
 
+    if payload.pin and await _pin_collides_with_other_staff(restaurant.id, payload.pin, db):
+        raise HTTPException(status.HTTP_409_CONFLICT, "That PIN is already in use by another staff member here.")
+
     new_staff = User(
         restaurant_id=restaurant.id,
         role=payload.role,
         email=payload.email,
         name=payload.name,
         hashed_password=hash_password(payload.password),
+        pin_hash=hash_password(payload.pin) if payload.pin else None,
     )
     db.add(new_staff)
     await db.commit()
@@ -136,6 +152,15 @@ async def update_staff(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cannot change the owner's role, or grant the owner role, via this endpoint.")
 
     target.role = payload.role
+
+    if "pin" in payload.model_fields_set:
+        if payload.pin is None:
+            target.pin_hash = None
+        else:
+            if await _pin_collides_with_other_staff(restaurant.id, payload.pin, db, exclude_user_id=target.id):
+                raise HTTPException(status.HTTP_409_CONFLICT, "That PIN is already in use by another staff member here.")
+            target.pin_hash = hash_password(payload.pin)
+
     await db.commit()
     await db.refresh(target)
     return target

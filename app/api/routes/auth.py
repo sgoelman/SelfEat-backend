@@ -2,11 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps import get_restaurant_or_404
 from app.core.database import get_db
 from app.core.security import create_access_token, verify_password
 from app.core.social_auth import SocialProfile, verify_facebook_access_token, verify_google_id_token
 from app.models.user import STAFF_ROLES, User, UserRole
-from app.schemas.auth import LoginRequest, SocialLoginRequest, SocialLoginResponse, TokenResponse
+from app.schemas.auth import LoginRequest, PinLoginRequest, SocialLoginRequest, SocialLoginResponse, TokenResponse
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -23,6 +24,30 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)) -> To
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Incorrect email or password")
 
     token = create_access_token(subject=str(user.id))
+    return TokenResponse(access_token=token)
+
+
+@router.post("/pin-login/{slug}", response_model=TokenResponse)
+async def pin_login(slug: str, payload: PinLoginRequest, db: AsyncSession = Depends(get_db)) -> TokenResponse:
+    """Daily floor-staff login (PM/PO's staff-login-UX research, TASKS.md): the device is set up
+    for one restaurant once (the slug comes from that device-level setup, not typed per login),
+    so a waiter/kitchen/chef just enters their PIN — no email, no restaurant identifier.
+
+    PINs are hashed per-user (see User.pin_hash), so there's no direct lookup — this scans the
+    restaurant's staff and bcrypt-checks each one with a PIN set. Fine at normal staff-roster
+    sizes; _pin_collides_with_other_staff (routes/settings.py) prevents two staff sharing a PIN,
+    which is what would make this scan ambiguous.
+    """
+    restaurant = await get_restaurant_or_404(slug, db)
+
+    result = await db.execute(select(User).where(User.restaurant_id == restaurant.id, User.pin_hash.is_not(None)))
+    candidates = result.scalars().all()
+
+    match = next((u for u in candidates if verify_password(payload.pin, u.pin_hash)), None)
+    if match is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Incorrect PIN")
+
+    token = create_access_token(subject=str(match.id))
     return TokenResponse(access_token=token)
 
 

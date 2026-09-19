@@ -8,6 +8,10 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class PinLoginRequest(BaseModel):
+    pin: str
+
+
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"

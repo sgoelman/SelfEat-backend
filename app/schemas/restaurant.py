@@ -10,6 +10,7 @@ class RestaurantPublic(BaseModel):
     slug: str
     name: str
     languages: list[str]
+    plan: str = "free"  # "free" | "pro" — gates Pro-only features like AI menu upload
     signup_gift_item_id: uuid.UUID | None = None
 
 

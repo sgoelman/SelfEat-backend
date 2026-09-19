@@ -1,6 +1,7 @@
 from app.models.base import Base
 from app.models.floor import Floor
 from app.models.menu import MenuItem, MenuSection, QueueType
+from app.models.menu_extraction import MenuExtractionUsage
 from app.models.order import (
     FulfillmentMode,
     Order,
@@ -22,6 +23,7 @@ __all__ = [
     "MenuSection",
     "MenuItem",
     "QueueType",
+    "MenuExtractionUsage",
     "Order",
     "OrderItem",
     "OrderStatus",

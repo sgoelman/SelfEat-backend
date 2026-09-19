@@ -110,3 +110,16 @@ class MenuItemOut(BaseModel):
 
 class MenuSectionWithItems(MenuSectionOut):
     items: list[MenuItemOut] = []
+
+
+class ExtractedMenuItemOut(BaseModel):
+    """A candidate item pulled from a menu photo (Pro-tier AI extraction) — not yet a real
+    MenuItem; the restaurant reviews/edits these client-side before actually creating any."""
+
+    name: dict[str, str]
+    description: dict[str, str] = {}
+    price: float | None = None
+
+
+class MenuExtractionResultOut(BaseModel):
+    items: list[ExtractedMenuItemOut]

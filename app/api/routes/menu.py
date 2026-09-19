@@ -1,14 +1,19 @@
 import uuid
+from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import ensure_staff_belongs, get_current_staff, get_restaurant_or_404, require_capability
+from app.core.config import settings
 from app.core.database import get_db
 from app.models.menu import MenuItem, MenuSection
+from app.models.menu_extraction import MenuExtractionUsage
 from app.models.user import User
 from app.schemas.menu import (
+    ExtractedMenuItemOut,
+    MenuExtractionResultOut,
     MenuItemCreate,
     MenuItemOut,
     MenuItemUpdate,
@@ -17,8 +22,12 @@ from app.schemas.menu import (
     MenuSectionUpdate,
     MenuSectionWithItems,
 )
+from app.services.menu_extraction import MenuExtractionError, extract_menu_items_from_image
 
 router = APIRouter(prefix="/restaurants/{slug}", tags=["menu-admin"])
+
+MAX_MENU_PHOTO_BYTES = 10 * 1024 * 1024  # 10MB
+ALLOWED_MENU_PHOTO_TYPES = {"image/jpeg", "image/png", "image/webp"}
 
 
 @router.get("/sections", response_model=list[MenuSectionWithItems])
@@ -195,3 +204,57 @@ async def delete_item(
 
     await db.delete(item)
     await db.commit()
+
+
+@router.post("/menu/extract", response_model=MenuExtractionResultOut)
+async def extract_menu_from_photo(
+    slug: str,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    staff: User = Depends(get_current_staff),
+) -> MenuExtractionResultOut:
+    """Pro-tier only: AI-assisted menu entry from a photo of a menu (Gemini 2.5 Flash via Vertex
+    AI). Returns candidate items for the restaurant to review/edit client-side — never creates
+    MenuItem rows directly, since text extraction is reliable but not guaranteed-correct (see
+    TASKS.md; auto-cropping individual dish photos is explicitly descoped, item photos stay a
+    manual per-item upload)."""
+    restaurant = await get_restaurant_or_404(slug, db)
+    ensure_staff_belongs(restaurant, staff)
+    require_capability(restaurant, staff, "manage_menu")
+
+    if restaurant.plan != "pro":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "AI menu upload is a Pro-tier feature")
+
+    if file.content_type not in ALLOWED_MENU_PHOTO_TYPES:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Upload a JPEG, PNG, or WEBP image")
+
+    image_bytes = await file.read()
+    if len(image_bytes) > MAX_MENU_PHOTO_BYTES:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Image too large (10MB max)")
+
+    # Real spend backstop (TASKS.md: "needs a usage-tracking backstop, not just a GCP budget
+    # alert") — a company-wide monthly call cap, incremented before the Vertex AI call since
+    # Google bills on the request itself, not on whether we can parse what comes back.
+    year_month = datetime.now(timezone.utc).strftime("%Y-%m")
+    usage_result = await db.execute(select(MenuExtractionUsage).where(MenuExtractionUsage.year_month == year_month))
+    usage = usage_result.scalar_one_or_none()
+    if usage is None:
+        usage = MenuExtractionUsage(year_month=year_month, call_count=0)
+        db.add(usage)
+        await db.flush()
+
+    if usage.call_count >= settings.menu_extraction_monthly_call_cap:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "Monthly AI menu-extraction budget reached — try again next month or add items manually",
+        )
+
+    usage.call_count += 1
+    await db.commit()
+
+    try:
+        extracted = await extract_menu_items_from_image(image_bytes, file.content_type)
+    except MenuExtractionError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
+
+    return MenuExtractionResultOut(items=[ExtractedMenuItemOut(**item.model_dump()) for item in extracted])

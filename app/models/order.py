@@ -51,6 +51,11 @@ class Order(Base):
     # Per-restaurant sequential number for table-less (kiosk/counter) orders — lets staff call
     # "Order #12" instead of a table number. Set at creation; see create_order in routes/orders.py.
     pickup_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Expo push token for this order's diner device — replaces restaurant buzzer pagers with a
+    # real OS push notification when an item goes ready. Set at order creation if the diner
+    # granted notification permission; nullable since anonymous/no-permission orders still work
+    # via the existing foreground alert on the order-status screen. See services/push.py.
+    push_token: Mapped[str | None] = mapped_column(String(200), nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
 
 

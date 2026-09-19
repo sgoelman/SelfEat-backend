@@ -8,11 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import ensure_staff_belongs, get_current_staff, get_restaurant_or_404, require_capability
 from app.core.database import AsyncSessionLocal, get_db
 from app.models.menu import MenuItem, QueueType
-from app.models.order import Order, OrderItem, OrderItemStatus
+from app.models.order import FulfillmentMode, Order, OrderItem, OrderItemStatus
 from app.models.restaurant import Restaurant
 from app.models.table import RestaurantTable
 from app.models.user import User
 from app.schemas.order import ClaimRequest, KitchenQueueItemOut, OrderItemOut
+from app.services.push import send_push
 from app.services.queue_manager import queue_manager
 
 router = APIRouter(tags=["kitchen"])
@@ -96,6 +97,40 @@ async def claim_item(
     return order_item
 
 
+async def _maybe_send_ready_push(order: Order, ready_item: OrderItem, menu_item: MenuItem, db: AsyncSession) -> None:
+    """Replaces restaurant buzzer pagers with a real OS push — see services/push.py.
+
+    "when_ready" fulfillment (items delivered to the table as each finishes) notifies per item,
+    matching that mode's whole premise. "all_together" (the kitchen holds everything for one
+    delivery) would make a push per item misleading — the diner isn't getting anything yet — so
+    it waits and sends exactly one push, when the last item still outstanding goes ready.
+    """
+    if not order.push_token:
+        return
+
+    item_name = menu_item.name.get("en") or next(iter(menu_item.name.values()), "Item")
+
+    if order.fulfillment_mode == FulfillmentMode.when_ready:
+        await send_push(
+            order.push_token,
+            "Your food is ready!",
+            f"{item_name} is ready.",
+            {"order_id": str(order.id), "order_item_id": str(ready_item.id)},
+        )
+        return
+
+    # all_together — only notify once every item has reached ready or delivered.
+    other_items_result = await db.execute(select(OrderItem).where(OrderItem.order_id == order.id))
+    all_items = other_items_result.scalars().all()
+    if all(i.status in (OrderItemStatus.ready, OrderItemStatus.delivered) for i in all_items):
+        await send_push(
+            order.push_token,
+            "Your order is ready!",
+            "Everything's ready — enjoy your meal.",
+            {"order_id": str(order.id)},
+        )
+
+
 @router.post("/order-items/{item_id}/ready", response_model=OrderItemOut)
 async def mark_ready(
     item_id: uuid.UUID,
@@ -118,6 +153,7 @@ async def mark_ready(
         menu_item.queue_type.value,
         {"event": "item_ready", "order_item_id": str(order_item.id), "order_id": str(order.id)},
     )
+    await _maybe_send_ready_push(order, order_item, menu_item, db)
     return order_item
 
 

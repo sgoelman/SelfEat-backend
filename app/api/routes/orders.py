@@ -100,6 +100,7 @@ async def create_order(
         fulfillment_mode=payload.fulfillment_mode,
         payment_method=payload.payment_method,
         tip_amount=payload.tip_amount,
+        push_token=payload.push_token,
     )
     db.add(order)
     await db.flush()

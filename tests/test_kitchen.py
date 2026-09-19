@@ -127,3 +127,87 @@ async def test_claim_item_rejects_staff_from_another_restaurant(client, restaura
 
     resp = await client.post(f"/order-items/{order_item['id']}/claim", json={"staff_name": "Intruder"}, headers=other_headers)
     assert resp.status_code == 403
+
+
+async def _place_order_with_items(client, slug, headers, count, push_token=None, fulfillment_mode=None):
+    """Like _place_order but supports multiple items + push_token/fulfillment_mode, for the push
+    notification tests below — kept separate rather than extending _place_order so the many
+    existing callers of that helper aren't affected."""
+    section_resp = await client.post(f"/restaurants/{slug}/sections", json={"name": {"en": "Mains"}}, headers=headers)
+    items = []
+    for i in range(count):
+        item_resp = await client.post(
+            f"/restaurants/{slug}/items",
+            json={"section_id": section_resp.json()["id"], "name": {"en": f"Dish {i}"}, "price": 9.0, "queue_type": "main"},
+            headers=headers,
+        )
+        items.append(item_resp.json()["id"])
+
+    payload: dict = {"items": [{"menu_item_id": item_id, "quantity": 1} for item_id in items]}
+    if push_token is not None:
+        payload["push_token"] = push_token
+    if fulfillment_mode is not None:
+        payload["fulfillment_mode"] = fulfillment_mode
+    order_resp = await client.post(f"/restaurants/{slug}/orders", json=payload)
+    return order_resp.json()
+
+
+async def test_mark_ready_pushes_immediately_for_when_ready_order(client, restaurant, monkeypatch):
+    calls = []
+
+    async def fake_send_push(token, title, body, data=None):
+        calls.append((token, title, body, data))
+
+    monkeypatch.setattr("app.api.routes.kitchen.send_push", fake_send_push)
+
+    slug = restaurant["slug"]
+    headers = restaurant["owner_headers"]
+    order = await _place_order_with_items(client, slug, headers, count=1, push_token="ExponentPushToken[fake]")
+    item_id = order["items"][0]["id"]
+
+    resp = await client.post(f"/order-items/{item_id}/ready", headers=headers)
+    assert resp.status_code == 200
+
+    assert len(calls) == 1
+    token, title, body, data = calls[0]
+    assert token == "ExponentPushToken[fake]"
+    assert "ready" in title.lower()
+    assert data["order_id"] == order["id"]
+
+
+async def test_mark_ready_skips_push_when_no_token(client, restaurant, monkeypatch):
+    calls = []
+    monkeypatch.setattr("app.api.routes.kitchen.send_push", lambda *a, **k: calls.append((a, k)))
+
+    slug = restaurant["slug"]
+    headers = restaurant["owner_headers"]
+    order = await _place_order_with_items(client, slug, headers, count=1)
+    item_id = order["items"][0]["id"]
+
+    resp = await client.post(f"/order-items/{item_id}/ready", headers=headers)
+    assert resp.status_code == 200
+    assert calls == []
+
+
+async def test_mark_ready_waits_for_all_items_when_all_together(client, restaurant, monkeypatch):
+    calls = []
+
+    async def fake_send_push(token, title, body, data=None):
+        calls.append((token, title, body, data))
+
+    monkeypatch.setattr("app.api.routes.kitchen.send_push", fake_send_push)
+
+    slug = restaurant["slug"]
+    headers = restaurant["owner_headers"]
+    order = await _place_order_with_items(
+        client, slug, headers, count=2, push_token="ExponentPushToken[fake]", fulfillment_mode="all_together"
+    )
+    first_id, second_id = order["items"][0]["id"], order["items"][1]["id"]
+
+    first_resp = await client.post(f"/order-items/{first_id}/ready", headers=headers)
+    assert first_resp.status_code == 200
+    assert calls == []  # one item still not ready — no push yet
+
+    second_resp = await client.post(f"/order-items/{second_id}/ready", headers=headers)
+    assert second_resp.status_code == 200
+    assert len(calls) == 1  # now that both are ready, exactly one push fires

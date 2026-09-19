@@ -42,6 +42,9 @@ class OrderCreate(BaseModel):
     payment_method: PaymentMethod | None = None
     tip_amount: float = 0
     items: list[OrderItemCreate]
+    # Expo push token — set only if the diner granted notification permission client-side.
+    # See app/services/push.py.
+    push_token: str | None = None
 
 
 class OrderItemOut(BaseModel):

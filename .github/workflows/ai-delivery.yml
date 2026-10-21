@@ -43,6 +43,7 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           CODEX_MODEL: ${{ vars.AI_DELIVERY_CODEX_MODEL }}
           CLAUDE_MODEL: ${{ vars.AI_DELIVERY_CLAUDE_MODEL }}
+          PR_REQUIREMENTS: ${{ github.event.pull_request.body }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: python3 control/.github/ai-delivery/run.py candidate "$BASE_SHA" ai-delivery-results
       - name: Preserve review evidence and repair patch

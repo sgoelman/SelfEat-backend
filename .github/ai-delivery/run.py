@@ -158,6 +158,7 @@ def run(root: Path, base: str, output: Path) -> None:
     for round_number in range(3):
         diff = command(["git", "diff", base, "--", "."], cwd=root)
         context = {
+            "requirements": os.environ.get("PR_REQUIREMENTS", ""),
             "diff": diff,
             "files": {name: (root / name).read_text() for name in sorted(allowed)},
         }

@@ -1,0 +1,15 @@
+name: AI delivery controller tests
+on:
+  pull_request:
+    paths: ['.github/ai-delivery/**', '.github/workflows/ai-delivery*.yml']
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          persist-credentials: false
+      - run: python3 -m unittest discover -s .github/ai-delivery -p 'test_*.py'

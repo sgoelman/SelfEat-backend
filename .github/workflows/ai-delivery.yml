@@ -53,3 +53,105 @@ jobs:
           path: ai-delivery-results/
           if-no-files-found: warn
           retention-days: 14
+
+  verify:
+    needs: review
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: control
+          persist-credentials: false
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: candidate
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: ai-delivery-${{ github.event.pull_request.head.sha }}
+          path: evidence
+      - name: Apply proposed repairs
+        working-directory: candidate
+        run: |
+          if [ -s ../evidence/repair.patch ]; then
+            git apply --check ../evidence/repair.patch
+            git apply ../evidence/repair.patch
+          fi
+      - name: Test the exact repaired application
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          CI: 'true'
+          HUVERA_TEST_POSTGRES: '1'
+        run: python3 control/.github/ai-delivery/verify.py candidate evidence
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ai-delivery-verified-${{ github.event.pull_request.head.sha }}
+          path: evidence/
+          retention-days: 14
+  publish:
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      checks: write
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: ai-delivery-verified-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/verified
+      - name: Commit tested repairs without merging
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          EVIDENCE: ${{ runner.temp }}/verified
+        run: |
+          python3 - <<'PYVERIFY'
+          import hashlib, json, os
+          from pathlib import Path
+          directory = Path(os.environ['EVIDENCE'])
+          proof = json.loads((directory / 'verified.json').read_text())
+          patch = directory / 'repair.patch'
+          data = patch.read_bytes() if patch.exists() else b''
+          assert proof['tested_original_head'] == os.environ['HEAD_SHA']
+          assert proof['repair_sha256'] == hashlib.sha256(data).hexdigest()
+          assert proof['human_approval'] is False
+          PYVERIFY
+          if [ -s "$EVIDENCE/repair.patch" ]; then
+            git apply --check "$EVIDENCE/repair.patch"
+            git apply "$EVIDENCE/repair.patch"
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add --update
+            git commit -m 'fix: apply tested AI review repairs'
+            auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
+            echo "::add-mask::$auth"
+            export GIT_CONFIG_COUNT=1
+            export GIT_CONFIG_KEY_0=http.https://github.com/.extraheader
+            export GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $auth"
+            git push origin "HEAD:refs/heads/$HEAD_REF"
+          fi
+          sha=$(git rev-parse HEAD)
+          export TESTED_SHA="$sha"
+          python3 - <<'PYCODE'
+          import json, os
+          from pathlib import Path
+          Path('/tmp/check.json').write_text(json.dumps({
+            'name': 'AI delivery verified application',
+            'head_sha': os.environ['TESTED_SHA'], 'status': 'completed',
+            'conclusion': 'success', 'output': {
+              'title': 'Configured application checks passed',
+              'summary': 'Claude review and configured project checks passed for this content. AI evidence is not human approval. Review run artifacts and approve this exact revision.'}}))
+          PYCODE
+          gh api --method POST "repos/$GITHUB_REPOSITORY/check-runs" --input /tmp/check.json

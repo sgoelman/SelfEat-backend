@@ -1,0 +1,37 @@
+name: Backend product tests
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  pytest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          persist-credentials: false
+      - name: Install test dependencies
+        run: |
+          python3.12 -m venv .venv
+          .venv/bin/pip install -r requirements-dev.txt
+      - name: Run product tests and summarize counts
+        id: tests
+        run: |
+          report="$RUNNER_TEMP/selfeat-backend.xml"
+          code=0
+          .venv/bin/python -m pytest --junitxml="$report" > "$RUNNER_TEMP/selfeat-backend.log" 2>&1 || code=$?
+          .venv/bin/python scripts/ci/test_counts.py "$report" "$code" "$RUNNER_TEMP/selfeat-test-counts.json"
+          echo "available=true" >> "$GITHUB_OUTPUT"
+          exit "$code"
+      - name: Upload aggregate counts
+        if: ${{ !cancelled() && steps.tests.outputs.available == 'true' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: selfeat-backend-test-counts-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/selfeat-test-counts.json
+          if-no-files-found: error
+          retention-days: 14
